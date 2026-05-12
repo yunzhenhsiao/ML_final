@@ -10,13 +10,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
+import keras
+import tensorflow 
 
-# ── Try importing Keras (optional, for .h5 fallback) ──────────────────────────
-try:
-    from tensorflow import keras
-    KERAS_AVAILABLE = True
-except ImportError:
-    KERAS_AVAILABLE = False
+KERAS_AVAILABLE = True
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
