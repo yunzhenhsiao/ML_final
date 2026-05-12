@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UrbanSound8K — 城市聲音分類系統</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Variables ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080c10;
+      --surface:   #0e1419;
+      --surface2:  #131b22;
+      --border:    #1e2d3d;
+      --border2:   #243444;
+      --cyan:      #00e5ff;
+      --cyan-dim:  #00b8cc;
+      --amber:     #ffc107;
+      --green:     #00e676;
+      --red:       #ff5252;
+      --purple:    #ce93d8;
+      --text:      #cdd9e5;
+      --text-dim:  #6e8099;
+      --text-muted:#3d5166;
+      --mono:      'Space Mono', monospace;
+      --sans:      'Noto Sans TC', sans-serif;
+      --radius:    6px;
+      --glow-cyan: 0 0 20px rgba(0,229,255,0.15);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Scanline overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 999; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+      );
+    }
+
+    /* ── Grid background ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 40px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      background: rgba(8,12,16,0.9);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 100;
+    }
+
+    .logo-mark {
+      width: 36px; height: 36px;
+      border: 2px solid var(--cyan);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      animation: pulse-border 3s ease-in-out infinite;
+    }
+    .logo-mark::before {
+      content: '';
+      position: absolute; inset: 4px;
+      background: var(--cyan);
+      opacity: 0.15;
+      animation: pulse-fill 3s ease-in-out infinite;
+    }
+    .logo-wave {
+      font-size: 16px; color: var(--cyan); position: relative; z-index: 1;
+    }
+    @keyframes pulse-border {
+      0%,100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.4); }
+      50%      { box-shadow: 0 0 0 6px rgba(0,229,255,0); }
+    }
+    @keyframes pulse-fill {
+      0%,100% { opacity: 0.15; } 50% { opacity: 0.3; }
+    }
+
+    .header-title { flex: 1; }
+    .header-title h1 {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--cyan);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    .header-title p {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      margin-top: 2px;
+    }
+
+    .status-row {
+      display: flex; gap: 16px; align-items: center;
+    }
+    .status-chip {
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 10px;
+      color: var(--text-dim);
+      border: 1px solid var(--border2);
+      padding: 4px 10px; border-radius: 20px;
+    }
+    .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.offline { background: var(--red); }
+
+    /* ── Main layout ── */
+    main {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 40px 40px 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    /* ── Section headers ── */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Panel base ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .panel-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 20px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel-title::before {
+      content: '';
+      width: 3px; height: 14px;
+      background: var(--cyan);
+      border-radius: 2px;
+    }
+
+    /* ── Upload Zone ── */
+    .upload-zone {
+      border: 2px dashed var(--border2);
+      border-radius: var(--radius);
+      padding: 48px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-zone::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, rgba(0,229,255,0.04) 0%, transparent 70%);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--cyan);
+      background: rgba(0,229,255,0.03);
+    }
+    .upload-zone:hover::before, .upload-zone.dragover::before { opacity: 1; }
+
+    .upload-icon {
+      font-size: 40px; margin-bottom: 12px; display: block;
+      filter: grayscale(0.5);
+    }
+    .upload-zone h3 {
+      font-size: 15px; font-weight: 500; color: var(--text);
+      margin-bottom: 6px;
+    }
+    .upload-zone p { font-size: 12px; color: var(--text-dim); }
+    .upload-zone input { display: none; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 22px;
+      border: 1px solid var(--border2);
+      background: transparent;
+      color: var(--text);
+      font-family: var(--mono); font-size: 11px;
+      cursor: pointer; border-radius: var(--radius);
+      transition: all 0.2s;
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .btn:hover {
+      border-color: var(--cyan); color: var(--cyan);
+      box-shadow: var(--glow-cyan);
+    }
+    .btn-primary {
+      background: var(--cyan); color: #000;
+      border-color: var(--cyan); font-weight: 700;
+    }
+    .btn-primary:hover {
+      background: var(--cyan-dim); color: #000;
+      box-shadow: 0 0 24px rgba(0,229,255,0.3);
+    }
+
+    /* ── Test audio chips ── */
+    .test-audio-row {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px;
+    }
+    .test-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      color: var(--text-dim);
+      font-family: var(--mono); font-size: 10px;
+      cursor: pointer; border-radius: 20px;
+      transition: all 0.2s;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .test-chip:hover {
+      border-color: var(--amber); color: var(--amber);
+    }
+    .test-chip .chip-icon { font-size: 14px; }
+
+    /* ── Current file info bar ── */
+    .file-info-bar {
+      display: none;
+      align-items: center; gap: 16px;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      font-family: var(--mono); font-size: 11px;
+    }
+    .file-info-bar.visible { display: flex; }
+    .file-name { color: var(--cyan); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-meta { color: var(--text-muted); }
+
+    /* ── Waveform / Spectrogram grid ── */
+    .viz-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .viz-grid { grid-template-columns: 1fr; } }
+
+    .viz-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .viz-card-header {
+      padding: 10px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .viz-card-title {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.15em;
+    }
+    .viz-tag {
+      font-family: var(--mono); font-size: 9px;
+      padding: 2px 8px; border-radius: 3px;
+      background: rgba(0,229,255,0.08); color: var(--cyan);
+      border: 1px solid rgba(0,229,255,0.2);
+    }
+    .viz-img-wrap {
+      padding: 12px;
+      min-height: 120px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .viz-img-wrap img { width: 100%; border-radius: 3px; display: block; }
+    .viz-placeholder {
+      color: var(--text-muted); font-size: 11px; font-family: var(--mono);
+      text-align: center;
+    }
+
+    /* ── Models grid ── */
+    .models-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 1000px) { .models-grid { grid-template-columns: 1fr; } }
+
+    .model-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.3s;
+      display: flex; flex-direction: column;
+    }
+    .model-card.active { border-color: var(--cyan); box-shadow: var(--glow-cyan); }
+    .model-card.loading .model-body { opacity: 0.4; pointer-events: none; }
+
+    .model-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .model-num {
+      font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+      width: 24px;
+    }
+    .model-name { font-family: var(--mono); font-size: 12px; color: var(--text); flex: 1; }
+    .model-badge {
+      font-family: var(--mono); font-size: 9px;
+      padding: 2px 8px; border-radius: 3px; text-transform: uppercase;
+    }
+    .badge-baseline { background: rgba(206,147,216,0.12); color: var(--purple); border: 1px solid rgba(206,147,216,0.25); }
+    .badge-optimized { background: rgba(0,230,118,0.1); color: var(--green); border: 1px solid rgba(0,230,118,0.2); }
+    .badge-cnn      { background: rgba(255,193,7,0.1); color: var(--amber); border: 1px solid rgba(255,193,7,0.2); }
+
+    .model-body { padding: 18px; flex: 1; }
+
+    .model-acc-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .model-acc-label { font-size: 10px; color: var(--text-dim); }
+    .model-acc-val { font-family: var(--mono); font-size: 13px; color: var(--text); }
+
+    .acc-bar-wrap {
+      height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 18px;
+    }
+    .acc-bar { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+
+    /* Divider */
+    .model-divider {
+      height: 1px; background: var(--border); margin: 0 -18px 18px;
+    }
+
+    /* Prediction result */
+    .pred-result {
+      text-align: center; margin-bottom: 16px;
+    }
+    .pred-waiting {
+      font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+      padding: 20px 0;
+    }
+    .pred-label-en {
+      font-family: var(--mono); font-size: 20px; font-weight: 700;
+      color: var(--cyan); letter-spacing: 0.05em;
+      line-height: 1.2;
+    }
+    .pred-label-zh {
+      font-size: 13px; color: var(--text-dim); margin-top: 4px;
+    }
+    .pred-confidence {
+      display: inline-block;
+      font-family: var(--mono); font-size: 11px;
+      padding: 4px 12px; border-radius: 20px;
+      background: rgba(0,229,255,0.08);
+      border: 1px solid rgba(0,229,255,0.2);
+      color: var(--cyan); margin-top: 8px;
+    }
+
+    /* Proba bars */
+    .proba-section { margin-top: 4px; }
+    .expand-btn {
+      width: 100%;
+      background: none; border: 1px solid var(--border);
+      color: var(--text-dim); font-family: var(--mono); font-size: 10px;
+      padding: 7px; border-radius: var(--radius);
+      cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em;
+      transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .expand-btn:hover { border-color: var(--border2); color: var(--text); }
+    .expand-btn .arrow { transition: transform 0.3s; display: inline-block; }
+    .expand-btn.open .arrow { transform: rotate(180deg); }
+
+    .proba-bars {
+      display: none; margin-top: 12px;
+      flex-direction: column; gap: 6px;
+    }
+    .proba-bars.visible { display: flex; }
+
+    .proba-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 44px;
+      align-items: center; gap: 8px;
+    }
+    .proba-class {
+      font-family: var(--mono); font-size: 9px;
+      color: var(--text-dim); text-align: right;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .proba-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .proba-bar-fill {
+      height: 100%; border-radius: 3px; transition: width 0.6s ease;
+      background: var(--border2);
+    }
+    .proba-bar-fill.top { background: var(--cyan); }
+    .proba-val {
+      font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+      text-align: right;
+    }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid var(--border2);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    .spinner.active { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Analyze button row ── */
+    .analyze-row {
+      display: flex; align-items: center; justify-content: center; gap: 16px;
+    }
+
+    /* ── Model description ── */
+    .model-desc {
+      font-size: 11px; color: var(--text-muted); margin-bottom: 16px;
+      line-height: 1.6;
+    }
+
+    /* ── Offline notice ── */
+    .model-offline {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--red); text-align: center;
+      padding: 8px; border-radius: var(--radius);
+      border: 1px dashed rgba(255,82,82,0.3);
+      background: rgba(255,82,82,0.05);
+      margin-bottom: 12px;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 32px; right: 32px;
+      background: var(--surface2); border: 1px solid var(--border2);
+      color: var(--text); font-family: var(--mono); font-size: 11px;
+      padding: 12px 20px; border-radius: var(--radius);
+      opacity: 0; transform: translateY(8px);
+      transition: all 0.3s; pointer-events: none; z-index: 200;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.error { border-color: var(--red); color: var(--red); }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ───────────────────────────────────────────────────── -->
+<header>
+  <div class="logo-mark"><span class="logo-wave">◈</span></div>
+  <div class="header-title">
+    <h1>UrbanSound8K Classifier</h1>
+    <p>城市聲音分類系統 — ML Final Project</p>
+  </div>
+  <div class="status-row" id="statusRow">
+    <div class="status-chip"><span class="dot" id="dotLR"></span>LR</div>
+    <div class="status-chip"><span class="dot" id="dotMLP"></span>MLP</div>
+    <div class="status-chip"><span class="dot" id="dotCNN"></span>CNN</div>
+  </div>
+</header>
+
+<!-- ── Main ─────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Section A: Input -->
+  <div>
+    <div class="section-label">A — 音訊輸入 Audio Input</div>
+    <div class="panel">
+      <div class="panel-title">上傳音訊檔案</div>
+
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".wav,.mp3,.ogg,.flac,.aiff" />
+        <span class="upload-icon">🎙</span>
+        <h3>拖曳音訊至此，或點擊選擇檔案</h3>
+        <p>支援格式：WAV · MP3 · OGG · FLAC · AIFF　｜　上傳後自動顯示波形與頻譜圖</p>
+        <br />
+        <button class="btn" onclick="document.getElementById('fileInput').click()">
+          ⊕ 選擇檔案
+        </button>
+      </div>
+
+      <!-- Test audio chips -->
+      <div>
+        <p style="font-size:11px; color:var(--text-muted); font-family:var(--mono); margin-top:20px; margin-bottom:10px;">
+          ── 預設測試音檔（放置於 test_audio/ 資料夾）
+        </p>
+        <div class="test-audio-row" id="testChips">
+          <span class="test-chip" data-file="dog_bark.wav"><span class="chip-icon">🐕</span> Dog Bark</span>
+          <span class="test-chip" data-file="drilling.wav"><span class="chip-icon">🔧</span> Drilling</span>
+          <span class="test-chip" data-file="siren.wav"><span class="chip-icon">🚨</span> Siren</span>
+          <span class="test-chip" data-file="gun_shot.wav"><span class="chip-icon">💥</span> Gun Shot</span>
+          <span class="test-chip" data-file="car_horn.wav"><span class="chip-icon">🚗</span> Car Horn</span>
+          <span class="test-chip" data-file="street_music.wav"><span class="chip-icon">🎸</span> Street Music</span>
+        </div>
+        <p style="font-size:10px; color:var(--text-muted); font-family:var(--mono); margin-top:8px;">
+          ※ 測試音檔功能需搭配後端路由，請將 .wav 放入 test_audio/ 資料夾後自行擴充 /load_test 路由。
+        </p>
+      </div>
+
+      <!-- File info bar -->
+      <div class="file-info-bar" id="fileInfoBar" style="margin-top:16px;">
+        <span>📁</span>
+        <span class="file-name" id="fileNameDisplay">—</span>
+        <span class="file-meta" id="fileMeta"></span>
+      </div>
+
+      <!-- Analyze button -->
+      <div class="analyze-row" style="margin-top:20px;">
+        <div class="spinner" id="mainSpinner"></div>
+        <button class="btn btn-primary" id="analyzeBtn" onclick="analyze()" disabled>
+          ▶ 開始分析 Analyze
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section B: Visualization -->
+  <div id="vizSection" style="display:none;">
+    <div class="section-label">B — 聲音視覺化 Signal Visualization</div>
+    <div class="viz-grid">
+      <div class="viz-card">
+        <div class="viz-card-header">
+          <span class="viz-card-title">Waveform — 時域波形</span>
+          <span class="viz-tag">Time Domain</span>
+        </div>
+        <div class="viz-img-wrap" id="waveformWrap">
+          <div class="viz-placeholder">—</div>
+        </div>
+      </div>
+      <div class="viz-card">
+        <div class="viz-card-header">
+          <span class="viz-card-title">Mel-Spectrogram — 梅爾頻譜</span>
+          <span class="viz-tag">Frequency Domain</span>
+        </div>
+        <div class="viz-img-wrap" id="melWrap">
+          <div class="viz-placeholder">—</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; gap:16px; margin-top:10px;">
+      <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted);">
+        時長 Duration: <span id="durVal" style="color:var(--text);">—</span> s
+      </div>
+      <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted);">
+        取樣率 Sample Rate: <span id="srVal" style="color:var(--text);">—</span> Hz
+      </div>
+    </div>
+  </div>
+
+  <!-- Section C: Models -->
+  <div>
+    <div class="section-label">C — 多模型診斷 Multi-Model Diagnosis</div>
+    <div class="models-grid">
+
+      <!-- LR Card -->
+      <div class="model-card" id="cardLR">
+        <div class="model-header">
+          <span class="model-num">01</span>
+          <span class="model-name">Logistic Regression</span>
+          <span class="model-badge badge-baseline">Baseline</span>
+        </div>
+        <div class="model-body">
+          <p class="model-desc">基礎統計特徵 — MFCC mean/std 手工提取，輸入維度 80-dim，線性分類器。最簡單的基準線。</p>
+          <div class="model-offline" id="offlineLR" style="display:none;">⚠ 模型未載入 (lr_model.pkl not found)</div>
+          <div class="model-acc-row">
+            <span class="model-acc-label">Test Accuracy</span>
+            <span class="model-acc-val" id="accLR">—</span>
+          </div>
+          <div class="acc-bar-wrap">
+            <div class="acc-bar" id="accBarLR" style="background:var(--purple); width:0;"></div>
+          </div>
+          <div class="model-divider"></div>
+          <div class="pred-result" id="predLR">
+            <div class="pred-waiting">等待音訊輸入…</div>
+          </div>
+          <div class="proba-section">
+            <button class="expand-btn" id="expandLR" onclick="toggleProba('LR')" style="display:none;">
+              查看完整機率分布 <span class="arrow">▾</span>
+            </button>
+            <div class="proba-bars" id="probaLR"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MLP Card -->
+      <div class="model-card" id="cardMLP">
+        <div class="model-header">
+          <span class="model-num">02</span>
+          <span class="model-name">Keras MLP</span>
+          <span class="model-badge badge-optimized">Optimized</span>
+        </div>
+        <div class="model-body">
+          <p class="model-desc">深度學習 — 完整 MFCC 矩陣展平後標準化，多層感知機架構。特徵保留更完整，準確率顯著提升。</p>
+          <div class="model-offline" id="offlineMLP" style="display:none;">⚠ 模型未載入 (mlp_model.pkl not found)</div>
+          <div class="model-acc-row">
+            <span class="model-acc-label">Test Accuracy</span>
+            <span class="model-acc-val" id="accMLP">—</span>
+          </div>
+          <div class="acc-bar-wrap">
+            <div class="acc-bar" id="accBarMLP" style="background:var(--green); width:0;"></div>
+          </div>
+          <div class="model-divider"></div>
+          <div class="pred-result" id="predMLP">
+            <div class="pred-waiting">等待音訊輸入…</div>
+          </div>
+          <div class="proba-section">
+            <button class="expand-btn" id="expandMLP" onclick="toggleProba('MLP')" style="display:none;">
+              查看完整機率分布 <span class="arrow">▾</span>
+            </button>
+            <div class="proba-bars" id="probaMLP"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CNN Card -->
+      <div class="model-card" id="cardCNN">
+        <div class="model-header">
+          <span class="model-num">03</span>
+          <span class="model-name">CNN</span>
+          <span class="model-badge badge-cnn">CNN</span>
+        </div>
+        <div class="model-body">
+          <p class="model-desc">卷積神經網路 — 輸入 Mel-spectrogram 影像（128×128），以影像識別方式處理聲音訊號。</p>
+          <div class="model-offline" id="offlineCNN" style="display:none;">⚠ 模型未載入 (cnn_model.pkl not found)</div>
+          <div class="model-acc-row">
+            <span class="model-acc-label">Test Accuracy</span>
+            <span class="model-acc-val" id="accCNN">—</span>
+          </div>
+          <div class="acc-bar-wrap">
+            <div class="acc-bar" id="accBarCNN" style="background:var(--amber); width:0;"></div>
+          </div>
+          <div class="model-divider"></div>
+          <div class="pred-result" id="predCNN">
+            <div class="pred-waiting">等待音訊輸入…</div>
+          </div>
+          <div class="proba-section">
+            <button class="expand-btn" id="expandCNN" onclick="toggleProba('CNN')" style="display:none;">
+              查看完整機率分布 <span class="arrow">▾</span>
+            </button>
+            <div class="proba-bars" id="probaCNN"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let currentFile = null;
+  const MODEL_ACCS = { lr: 0.21, mlp: 0.93, cnn: 0.72 };
+  const MODEL_STATUS = { lr: false, mlp: false, cnn: false };
+
+  // ── Init: check model status ───────────────────────────────────────────────
+  async function checkModelStatus() {
+    try {
+      const res = await fetch('/models_status');
+      const data = await res.json();
+      MODEL_STATUS.lr  = data.lr;
+      MODEL_STATUS.mlp = data.mlp;
+      MODEL_STATUS.cnn = data.cnn;
+
+      updateDot('dotLR',  data.lr);
+      updateDot('dotMLP', data.mlp);
+      updateDot('dotCNN', data.cnn);
+
+      if (!data.lr)  { document.getElementById('offlineLR').style.display  = 'block'; }
+      if (!data.mlp) { document.getElementById('offlineMLP').style.display = 'block'; }
+      if (!data.cnn) { document.getElementById('offlineCNN').style.display = 'block'; }
+
+      // Set accuracy bars based on known accs
+      setAcc('LR',  MODEL_ACCS.lr,  data.lr);
+      setAcc('MLP', MODEL_ACCS.mlp, data.mlp);
+      setAcc('CNN', MODEL_ACCS.cnn, data.cnn);
+    } catch(e) {
+      console.warn('Cannot reach backend:', e);
+    }
+  }
+
+  function updateDot(id, online) {
+    const d = document.getElementById(id);
+    d.classList.toggle('online', online);
+    d.classList.toggle('offline', !online);
+  }
+
+  function setAcc(key, acc, online) {
+    const pct = Math.round(acc * 100);
+    document.getElementById('acc' + key).textContent = online ? `${pct}%` : '—';
+    setTimeout(() => {
+      if (online) document.getElementById('accBar' + key).style.width = pct + '%';
+    }, 300);
+  }
+
+  checkModelStatus();
+
+  // ── Upload Zone drag & drop ────────────────────────────────────────────────
+  const zone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('fileInput');
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  zone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+  function handleFile(file) {
+    currentFile = file;
+    document.getElementById('fileNameDisplay').textContent = file.name;
+    document.getElementById('fileMeta').textContent = `${(file.size/1024).toFixed(1)} KB`;
+    document.getElementById('fileInfoBar').classList.add('visible');
+    document.getElementById('analyzeBtn').disabled = false;
+    showToast(`✓ 已載入：${file.name}`);
+  }
+
+  // ── Analyze ────────────────────────────────────────────────────────────────
+  async function analyze() {
+    if (!currentFile) return;
+
+    setLoading(true);
+
+    const fd = new FormData();
+    fd.append('audio', currentFile);
+
+    try {
+      const res = await fetch('/predict', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (data.error) { showToast('⚠ ' + data.error, true); setLoading(false); return; }
+
+      // Viz
+      document.getElementById('vizSection').style.display = 'block';
+      document.getElementById('waveformWrap').innerHTML =
+        `<img src="data:image/png;base64,${data.waveform}" alt="waveform" />`;
+      document.getElementById('melWrap').innerHTML =
+        `<img src="data:image/png;base64,${data.mel_spectrogram}" alt="mel" />`;
+      document.getElementById('durVal').textContent = data.duration;
+      document.getElementById('srVal').textContent = data.sample_rate.toLocaleString();
+
+      // Results
+      renderModel('LR',  data.results.lr,  data.classes);
+      renderModel('MLP', data.results.mlp, data.classes);
+      renderModel('CNN', data.results.cnn, data.classes);
+
+      // Scroll to viz
+      document.getElementById('vizSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showToast('✓ 分析完成');
+
+    } catch(e) {
+      showToast('⚠ 無法連線後端，請確認 Flask 已啟動（port 5000）', true);
+      console.error(e);
+    }
+
+    setLoading(false);
+  }
+
+  function renderModel(key, result, classes) {
+    const predEl  = document.getElementById('pred' + key);
+    const probaEl = document.getElementById('proba' + key);
+    const expandEl = document.getElementById('expand' + key);
+
+    if (!result) {
+      predEl.innerHTML = '<div class="pred-waiting">模型未載入</div>';
+      return;
+    }
+
+    const confPct = Math.round(result.confidence * 100);
+    predEl.innerHTML = `
+      <div class="pred-label-en">${result.predicted}</div>
+      <div class="pred-label-zh">${result.predicted_zh}</div>
+      <div class="pred-confidence">Confidence ${confPct}%</div>
+    `;
+
+    // Build proba bars
+    const sorted = Object.entries(result.proba)
+      .sort((a, b) => b[1] - a[1]);
+
+    probaEl.innerHTML = sorted.map(([cls, prob]) => {
+      const pct = Math.round(prob * 100);
+      const isTop = cls === result.predicted;
+      return `
+        <div class="proba-row">
+          <span class="proba-class" style="${isTop ? 'color:var(--cyan)' : ''}">${cls}</span>
+          <div class="proba-bar-wrap">
+            <div class="proba-bar-fill ${isTop ? 'top' : ''}"
+                 style="width: ${pct}%"></div>
+          </div>
+          <span class="proba-val">${pct}%</span>
+        </div>`;
+    }).join('');
+
+    expandEl.style.display = 'flex';
+
+    // Highlight card
+    document.getElementById('card' + key).classList.add('active');
+  }
+
+  function toggleProba(key) {
+    const btn   = document.getElementById('expand' + key);
+    const bars  = document.getElementById('proba'  + key);
+    const isOpen = bars.classList.toggle('visible');
+    btn.classList.toggle('open', isOpen);
+  }
+
+  function setLoading(on) {
+    document.getElementById('mainSpinner').classList.toggle('active', on);
+    document.getElementById('analyzeBtn').disabled = on;
+    ['LR','MLP','CNN'].forEach(k => {
+      document.getElementById('card' + k).classList.toggle('loading', on);
+    });
+  }
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show' + (isError ? ' error' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = ''; }, 3000);
+  }
+</script>
+</body>
+</html>
