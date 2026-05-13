@@ -135,22 +135,30 @@ def extract_mlp_features(y, sr):
     mfcc_max = np.max(mfcc, axis=1)
     feat = np.hstack([mfcc_mean, mfcc_std, mfcc_max]).reshape(1, -1)
     
-    if MODELS['scaler']:
+    if 'scaler' in MODELS:
         feat = MODELS['scaler'].transform(feat) # 此時就是 120 對 120 了
     return feat
 
+import cv2
 
 def extract_cnn_features(y, sr):
-    """Mel-spectrogram 2D array for CNN."""
-    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
-    mel_db = librosa.power_to_db(mel, ref=np.max)
-    target_frames = 128
-    if mel_db.shape[1] < target_frames:
-        mel_db = np.pad(mel_db, ((0, 0), (0, target_frames - mel_db.shape[1])), mode='constant')
-    else:
-        mel_db = mel_db[:, :target_frames]
-    # Shape: (1, 128, 128, 1) for Conv2D
-    feat = mel_db[np.newaxis, :, :, np.newaxis]
+    # 1. 生成 Mel-spectrogram
+    S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
+    S_db = librosa.power_to_db(S, ref=np.max)
+    
+    # 2. 標準化 (請確認這段是否跟 Kaggle 一樣)
+    # 如果你在 Kaggle 是縮放到 0~255，這裡也要改
+    S_db_min = S_db.min()
+    S_db_max = S_db.max()
+    if S_db_max - S_db_min > 0:
+        S_db = (S_db - S_db_min) / (S_db_max - S_db_min)
+    
+    # 3. 縮放與維度處理
+    
+    img_resized = cv2.resize(S_db, (128, 128), interpolation=cv2.INTER_AREA)
+    
+    # 4. 增加維度以符合 CNN 輸入 (1, 128, 128, 1)
+    feat = img_resized.reshape(1, 128, 128, 1)
     return feat
 
 # ── Predict helpers ────────────────────────────────────────────────────────────
