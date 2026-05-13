@@ -550,13 +550,12 @@
           <span class="model-num-badge">01</span>
           <div class="model-name-block">
             <div class="model-name-en">Logistic Regression</div>
-            <div class="model-name-zh">邏輯斯迴歸</div>
+            <div class="model-name-zh">邏輯迴歸</div>
           </div>
           <span class="model-badge badge-baseline">Baseline</span>
         </div>
         <div class="model-body">
           <div class="model-offline" id="offlineLR" style="display:none;">⚠ 模型未載入 — lr_model.pkl not found</div>
-          <p class="model-desc">基礎統計特徵：MFCC mean/std 手工提取，80-dim 輸入，線性分類器。作為比較基準線。</p>
           <div class="acc-block">
             <div class="acc-label-row">
               <span class="acc-label">Test Accuracy</span>
@@ -589,7 +588,6 @@
         </div>
         <div class="model-body">
           <div class="model-offline" id="offlineRF" style="display:none;">⚠ 模型未載入 — rf_model.pkl not found</div>
-          <p class="model-desc">MFCC mean/std 統計特徵（80-dim），集成多棵決策樹，比 LR 更能捕捉非線性關係。</p>
           <div class="acc-block">
             <div class="acc-label-row">
               <span class="acc-label">Test Accuracy</span>
@@ -616,13 +614,12 @@
           <span class="model-num-badge">03</span>
           <div class="model-name-block">
             <div class="model-name-en">Keras MLP</div>
-            <div class="model-name-zh">多層感知機</div>
+            <div class="model-name-zh">多層感知器</div>
           </div>
           <span class="model-badge badge-optimized">Optimized</span>
         </div>
         <div class="model-body">
           <div class="model-offline" id="offlineMLP" style="display:none;">⚠ 模型未載入 — mlp_model.pkl not found</div>
-          <p class="model-desc">完整 MFCC 數值特徵 + StandardScaler 標準化，深度學習架構，準確率顯著提升。</p>
           <div class="acc-block">
             <div class="acc-label-row">
               <span class="acc-label">Test Accuracy</span>
@@ -655,7 +652,6 @@
         </div>
         <div class="model-body">
           <div class="model-offline" id="offlineCNN" style="display:none;">⚠ 模型未載入 — cnn_model.pkl not found</div>
-          <p class="model-desc">Mel-spectrogram 影像輸入（128×128），以卷積神經網路進行影像識別式聲音分類。</p>
           <div class="acc-block">
             <div class="acc-label-row">
               <span class="acc-label">Test Accuracy</span>
@@ -695,10 +691,10 @@
       if (!d.rf)  document.getElementById('offlineRF').style.display = 'block';
       if (!d.mlp) document.getElementById('offlineMLP').style.display = 'block';
       if (!d.cnn) document.getElementById('offlineCNN').style.display = 'block';
-      setAcc('LR',  0.21, d.lr);
-      setAcc('RF',  0.00, d.rf);   // ← 請改成實際準確度
-      setAcc('MLP', 0.93, d.mlp);
-      setAcc('CNN', 0.72, d.cnn);
+      setAcc('LR',  0.5988, d.lr);
+      setAcc('RF',  0.6629, d.rf);   // ← 請改成實際準確度
+      setAcc('MLP', 0.6569, d.mlp);
+      setAcc('CNN', 0.7599, d.cnn);
     } catch(e) { console.warn('Backend not reachable:', e); }
   }
 
