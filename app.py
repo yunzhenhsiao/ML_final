@@ -55,13 +55,28 @@ def load_models():
             MODELS['lr'] = pickle.load(f)
         print('[INFO] Loaded lr_model.pkl')
 
+    rf_path = os.path.join(model_dir, 'rf_model.pkl')
+    if os.path.exists(rf_path):
+        with open(rf_path, 'rb') as f:
+            MODELS['rf'] = pickle.load(f)
+        print('[INFO] Loaded rf_model.pkl')
+
     # MLP + scaler
     mlp_path = os.path.join(model_dir, 'mlp_model.pkl')
-    scaler_path = os.path.join(model_dir, 'scaler.pkl')
+    mlp_h5  = os.path.join(model_dir, 'mlp_model.h5')
+    mlp_keras = os.path.join(model_dir, 'mlp_model.keras')
     if os.path.exists(mlp_path):
         with open(mlp_path, 'rb') as f:
             MODELS['mlp'] = pickle.load(f)
         print('[INFO] Loaded mlp_model.pkl')
+    elif KERAS_AVAILABLE and os.path.exists(mlp_h5):
+        MODELS['mlp'] = keras.models.load_model(mlp_h5)
+        print('[INFO] Loaded mlp_model.h5')
+    elif KERAS_AVAILABLE and os.path.exists(mlp_keras):
+        MODELS['mlp'] = keras.models.load_model(mlp_keras)
+        print('[INFO] Loaded mlp_model.keras')
+
+    scaler_path = os.path.join(model_dir, 'scaler.pkl')
     if os.path.exists(scaler_path):
         with open(scaler_path, 'rb') as f:
             MODELS['scaler'] = pickle.load(f)
@@ -96,6 +111,10 @@ def extract_lr_features(y, sr):
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
     feat = np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)])
     return feat.reshape(1, -1)
+
+def extract_rf_features(y, sr):
+    """Same features as LR, but for Random Forest."""
+    return extract_lr_features(y, sr)
 
 
 def extract_mlp_features(y, sr):
@@ -223,6 +242,7 @@ def index():
 def models_status():
     return jsonify({
         'lr':  'lr'  in MODELS,
+        'rf':  'rf'  in MODELS,
         'mlp': 'mlp' in MODELS,
         'cnn': 'cnn' in MODELS,
     })
@@ -263,6 +283,20 @@ def predict():
             'model_accuracy': 0.21,
             'label': 'Baseline',
             'description': '基礎統計特徵 — MFCC mean/std',
+        }
+
+    # ── RF ──────────────────────────────────────────────────────────────────
+    if 'rf' in MODELS:
+        feat = extract_rf_features(y, sr)
+        pred, proba = predict_with_proba(MODELS['rf'], feat, 'rf')
+        results['rf'] = {
+            'predicted': CLASSES[pred],
+            'predicted_zh': CLASS_ZH[CLASSES[pred]],
+            'confidence': round(float(proba[pred]), 4),
+            'proba': {CLASSES[i]: round(float(p), 4) for i, p in enumerate(proba)},
+            'model_accuracy': 0.38,
+            'label': 'Random Forest',
+            'description': '基於決策樹的集成方法',
         }
 
     # ── MLP ─────────────────────────────────────────────────────────────────
