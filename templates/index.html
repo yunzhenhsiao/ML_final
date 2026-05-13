@@ -695,10 +695,10 @@
       if (!d.rf)  document.getElementById('offlineRF').style.display = 'block';
       if (!d.mlp) document.getElementById('offlineMLP').style.display = 'block';
       if (!d.cnn) document.getElementById('offlineCNN').style.display = 'block';
-      setAcc('LR',  0.21, d.lr);
-      setAcc('RF',  0.00, d.rf);   // ← 請改成實際準確度
-      setAcc('MLP', 0.93, d.mlp);
-      setAcc('CNN', 0.72, d.cnn);
+      setAcc('LR',  0.5988, d.lr);
+      setAcc('RF',  0.6629, d.rf);   // ← 請改成實際準確度
+      setAcc('MLP', 0.6569, d.mlp);
+      setAcc('CNN', 0.7599, d.cnn);
     } catch(e) { console.warn('Backend not reachable:', e); }
   }
 
