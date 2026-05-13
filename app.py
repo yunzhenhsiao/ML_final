@@ -25,6 +25,7 @@ CLASSES = [
     'dog_bark', 'drilling', 'engine_idling',
     'gun_shot', 'jackhammer', 'siren', 'street_music'
 ]
+
 CLASS_ZH = {
     'air_conditioner': '冷氣機',
     'car_horn': '汽車喇叭',
@@ -102,42 +103,66 @@ load_models()
 # ── Feature extraction ─────────────────────────────────────────────────────────
 
 def load_audio(file_bytes, sr=22050):
-    y, sr = librosa.load(io.BytesIO(file_bytes), sr=sr, mono=True)
+    y, sr = librosa.load(io.BytesIO(file_bytes), sr=sr, mono=True, res_type='soxr_hq')
     return y, sr
 
 
-# 在 app.py 中修改
-def extract_lr_features(y, sr):
+# 修改 app.py 中的特徵提取部分
+def extract_common_features(y, sr):
+    """
+    提取 120 維特徵：MFCC Mean (40) + Std (40) + Max (40)
+    """
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
-    mfcc_mean = np.mean(mfcc, axis=1)
-    mfcc_std = np.std(mfcc, axis=1)
-    mfcc_max = np.max(mfcc, axis=1) # 加上這個，湊齊 120 維
-    
-    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_max]).reshape(1, -1)
-    return feat
-
-# 在 app.py 中修改
-def extract_rf_features(y, sr):
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
-    mfcc_mean = np.mean(mfcc, axis=1)
-    mfcc_std = np.std(mfcc, axis=1)
-    mfcc_max = np.max(mfcc, axis=1) # 加上這個，湊齊 120 維
-    
-    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_max]).reshape(1, -1)
-    return feat
-
-
-def extract_mlp_features(y, sr):
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
-    # 改為計算 mean, std, max (40*3 = 120維)
     mfcc_mean = np.mean(mfcc, axis=1)
     mfcc_std = np.std(mfcc, axis=1)
     mfcc_max = np.max(mfcc, axis=1)
-    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_max]).reshape(1, -1)
     
-    if 'scaler' in MODELS:
-        feat = MODELS['scaler'].transform(feat) # 此時就是 120 對 120 了
+    # 拼接成 120 維向量
+    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_max]).reshape(1, -1)
     return feat
+
+def extract_features(y, sr):
+    # 1. 提取 MFCC (40, Frames)
+    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
+    print(f"Sample rate: {sr}")
+    
+    # 2. 為了確保與訓練代碼 extract_mfcc(file_path) 完全一致：
+    # 訓練時：mfccs_mean = np.mean(mfccs.T, axis=0)
+    # 我們這裡模仿一樣的動作：
+    mfccs_t = mfccs.T # 轉置成 (Frames, 40)
+    
+    mfccs_mean = np.mean(mfccs_t, axis=0) # (40,)
+    mfccs_std = np.std(mfccs_t, axis=0)   # (40,)
+    
+    # 計算 Delta：必須在原本的 mfccs (40, Frames) 上計算，再轉置取平均
+    delta_feat = librosa.feature.delta(mfccs)
+    mfccs_delta = np.mean(delta_feat.T, axis=0) # (40,)
+    
+    # 3. 橫向拼接：確保順序是 Mean(40) + Std(40) + Delta(40) = 120
+    feat = np.hstack([mfccs_mean, mfccs_std, mfccs_delta]).reshape(1, -1)
+    print(f"Mean shape: {mfccs_mean.shape}") # 應該是 (40,)
+    
+    # 4. 標準化
+    if 'scaler' in MODELS:
+        feat = MODELS['scaler'].transform(feat)
+    
+    return feat
+
+def extract_lr_features(y, sr):
+    return extract_features(y, sr)
+
+def extract_rf_features(y, sr):
+    return extract_common_features(y, sr)
+
+def extract_mlp_features(y, sr):
+    feat = extract_features(y, sr)
+    # MLP 訓練時有經過 normalize，所以這裡必須使用載入的 scaler 轉換
+    if 'scaler' in MODELS:
+        feat = MODELS['scaler'].transform(feat)
+        print("Scaled feature sample:", feat[0][:5])
+    return feat
+
+
 
 import cv2
 
@@ -160,6 +185,47 @@ def extract_cnn_features(y, sr):
     # 4. 增加維度以符合 CNN 輸入 (1, 128, 128, 1)
     feat = img_resized.reshape(1, 128, 128, 1)
     return feat
+
+import random
+
+@app.route('/load_test', methods=['GET'])
+def load_test_audio():
+    filename = request.args.get('file') # 取得網址參數 ?file=xxx
+    test_dir = 'test_audio'
+    
+    if not filename: # 如果沒給參數，就隨機抽一個 (保留原本功能)
+        audio_files = [f for f in os.listdir(test_dir) if f.endswith(tuple(ALLOWED_EXTENSIONS))]
+        filename = random.choice(audio_files)
+    
+    filepath = os.path.join(test_dir, filename)
+    
+    # 檢查資料夾是否存在
+    if not os.path.exists(test_dir):
+        return jsonify({'error': f'資料夾 {test_dir} 不存在'}), 404
+    
+    # 過覽出所有的音檔 (wav, mp3 等)
+    audio_files = [f for f in os.listdir(test_dir) if f.endswith(tuple(ALLOWED_EXTENSIONS))]
+    
+    if not audio_files:
+        return jsonify({'error': 'test_audio 資料夾內沒有音檔'}), 404
+
+    # 檢查檔案是否存在
+    if not os.path.exists(filepath):
+        return jsonify({'error': f'檔案 {filepath} 不存在'}), 404
+
+    try:
+        # 讀取音檔並轉成 Base64，讓前端可以直接播放
+        with open(filepath, 'rb') as f:
+            audio_data = f.read()
+            encoded_audio = base64.b64encode(audio_data).decode('utf-8')
+            
+        return jsonify({
+            'filename': filename,
+            'audio_base64': encoded_audio,
+            'mime_type': 'audio/wav' if filename.endswith('wav') else 'audio/mpeg'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ── Predict helpers ────────────────────────────────────────────────────────────
 
@@ -290,43 +356,59 @@ def predict():
     # ── LR ──────────────────────────────────────────────────────────────────
     if 'lr' in MODELS:
         feat = extract_lr_features(y, sr)
+        raw_pred = MODELS['lr'].predict(feat) # 這是模型吐出的數字
+        print(f"DEBUG - LR Raw Prediction Index: {raw_pred}")
+        raw_idx = MODELS['lr'].predict(feat)[0]  # 模型預測的索引
+        model_name = CLASSES[raw_idx]           # 你對應出來的名稱
+        print(f"--- DEBUG ---")
+        print(f"模型預測索引 (Index): {raw_idx}")
+        print(f"對應類別名稱 (Name): {model_name}")
+        print(f"所有類別順序 (CLASSES): {CLASSES}")
+        # 注意：如果 LR 訓練時也使用了 scaler，這裡的 feat 也需要先經由 scaler 轉換
+        if 'scaler' in MODELS:
+            feat = MODELS['scaler'].transform(feat)
+            
         pred, proba = predict_with_proba(MODELS['lr'], feat, 'lr')
         results['lr'] = {
             'predicted': CLASSES[pred],
             'predicted_zh': CLASS_ZH[CLASSES[pred]],
             'confidence': round(float(proba[pred]), 4),
             'proba': {CLASSES[i]: round(float(p), 4) for i, p in enumerate(proba)},
-            'model_accuracy': 0.21,
+            'model_accuracy': 0.60, # 根據 index.html 顯示的 59.88%
             'label': 'Baseline',
-            'description': '基礎統計特徵 — MFCC mean/std',
+            'description': '120維 MFCC 特徵 (Mean/Std/Max) + 邏輯迴歸',
         }
 
     # ── RF ──────────────────────────────────────────────────────────────────
     if 'rf' in MODELS:
         feat = extract_rf_features(y, sr)
+        # 注意：隨機森林通常對縮放不敏感，但若訓練時有做 normalize，建議也補上轉換
+        if 'scaler' in MODELS:
+            feat = MODELS['scaler'].transform(feat)
+
         pred, proba = predict_with_proba(MODELS['rf'], feat, 'rf')
         results['rf'] = {
             'predicted': CLASSES[pred],
             'predicted_zh': CLASS_ZH[CLASSES[pred]],
             'confidence': round(float(proba[pred]), 4),
             'proba': {CLASSES[i]: round(float(p), 4) for i, p in enumerate(proba)},
-            'model_accuracy': 0.38,
-            'label': 'Random Forest',
-            'description': '基於決策樹的集成方法',
+            'model_accuracy': 0.66, # 根據 index.html 顯示的 66.29%
+            'label': 'Ensemble',
+            'description': '120維 MFCC 特徵 + 隨機森林集成',
         }
 
     # ── MLP ─────────────────────────────────────────────────────────────────
     if 'mlp' in MODELS:
-        feat = extract_mlp_features(y, sr)
+        feat = extract_mlp_features(y, sr) # 內部已處理過 scaler
         pred, proba = predict_with_proba(MODELS['mlp'], feat, 'mlp')
         results['mlp'] = {
             'predicted': CLASSES[pred],
             'predicted_zh': CLASS_ZH[CLASSES[pred]],
             'confidence': round(float(proba[pred]), 4),
             'proba': {CLASSES[i]: round(float(p), 4) for i, p in enumerate(proba)},
-            'model_accuracy': 0.93,
+            'model_accuracy': 0.66, # 根據 index.html 顯示的 65.69%
             'label': 'Optimized',
-            'description': 'MFCC 數值特徵 + 標準化 + 深度學習',
+            'description': '120維 MFCC 特徵 + 三層 Dense 層 (256-512-256)',
         }
 
     # ── CNN ─────────────────────────────────────────────────────────────────

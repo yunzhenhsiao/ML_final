@@ -451,22 +451,22 @@
               請將對應 .wav 放入 <code style="background:var(--bg2);padding:1px 5px;border-radius:3px;">test_audio/</code> 資料夾。
             </p>
             <div class="test-grid">
-              <div class="test-chip" data-file="dog_bark.wav">
+              <div class="test-chip" data-file="dog_bark.wav" onclick="loadTestAudio('dog_bark.wav')">
                 <span class="chip-icon">🐕</span>Dog Bark
               </div>
-              <div class="test-chip" data-file="drilling.wav">
+              <div class="test-chip" data-file="drilling.wav" onclick="loadTestAudio('drilling.wav')">
                 <span class="chip-icon">🔧</span>Drilling
               </div>
-              <div class="test-chip" data-file="jackhammer.wav">
+              <div class="test-chip" data-file="jackhammer.wav" onclick="loadTestAudio('jackhammer.wav')">
                 <span class="chip-icon">🚨</span>Jackhammer
               </div>
-              <div class="test-chip" data-file="gun_shot.wav">
+              <div class="test-chip" data-file="gun_shot.wav" onclick="loadTestAudio('gun_shot.wav')">
                 <span class="chip-icon">💥</span>Gun Shot
               </div>
-              <div class="test-chip" data-file="car_horn.wav">
+              <div class="test-chip" data-file="car_horn.wav" onclick="loadTestAudio('car_horn.wav')">
                 <span class="chip-icon">🚗</span>Car Horn
               </div>
-              <div class="test-chip" data-file="street_music.wav">
+              <div class="test-chip" data-file="street_music.wav" onclick="loadTestAudio('street_music.wav')">
                 <span class="chip-icon">🎸</span>Street Music
               </div>
             </div>
@@ -712,6 +712,48 @@
   }
 
   checkModelStatus();
+
+  async function loadTestAudio(filename = '') {
+    showToast("正在載入測試音檔...", false);
+    try {
+        const url = filename ? `/load_test?file=${filename}` : '/load_test';
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.error) {
+            showToast(data.error, true);
+            return;
+        }
+
+        // 1. 將 Base64 轉回 Blob
+        const byteCharacters = atob(data.audio_base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: data.mime_type });
+
+        // 2. 建立一個 File 物件 (模擬使用者上傳)
+        const file = new File([blob], data.filename, { type: data.mime_type });
+
+        // 3. 取得正確的 input 元素 (ID 是 fileInput)
+        const fileInput = document.getElementById('fileInput'); 
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file); // 這裡使用剛建立的 file
+        fileInput.files = dataTransfer.files;
+
+        // 4. 更新全域變數 currentFile 並觸發介面更新
+        handleFile(file);
+
+        // 5. 自動開始分析
+        analyze(); 
+
+    } catch (e) {
+        console.error(e);
+        showToast("無法連接後端載入音檔", true);
+    }
+}
 
   // Upload
   const zone = document.getElementById('uploadZone');
