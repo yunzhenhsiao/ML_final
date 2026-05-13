@@ -257,8 +257,8 @@
     .viz-meta span { color: var(--ink); font-weight: 600; }
 
     /* ── Models ── */
-    .models-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
-    @media (max-width: 960px) { .models-grid { grid-template-columns: 1fr; } }
+    .models-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 20px; }
+    @media (max-width: 860px) { .models-grid { grid-template-columns: 1fr; } }
 
     .model-card {
       background: var(--surface); border: 2.5px solid var(--border);
@@ -273,6 +273,7 @@
       padding: 12px 18px; display: flex; align-items: center; gap: 10px;
     }
     #cardLR  .model-card-header { background: #4a3a9a; }
+    #cardRF  .model-card-header { background: #1a6b8a; }
     #cardMLP .model-card-header { background: #2d7d52; }
     #cardCNN .model-card-header { background: #9a4a1a; }
 
@@ -293,6 +294,7 @@
       text-transform: uppercase; letter-spacing: 0.08em;
     }
     .badge-baseline  { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3); }
+    .badge-ensemble  { background: rgba(26,107,138,0.3); color: #a8e6f8; border: 1px solid rgba(26,107,138,0.5); }
     .badge-optimized { background: rgba(39,174,96,0.25); color: #7dffb3; border: 1px solid rgba(39,174,96,0.4); }
     .badge-cnn       { background: rgba(230,126,34,0.25); color: #ffd199; border: 1px solid rgba(230,126,34,0.4); }
 
@@ -310,8 +312,6 @@
       border: 1.5px dashed rgba(192,0,0,0.4);
       background: rgba(192,0,0,0.04); border-radius: var(--radius);
     }
-
-    .acc-block {}
     .acc-label-row {
       display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;
     }
@@ -334,6 +334,7 @@
       font-family: var(--display); font-size: 24px; letter-spacing: 0.08em; line-height: 1;
     }
     #cardLR  .pred-label-en { color: #4a3a9a; }
+    #cardRF  .pred-label-en { color: #1a6b8a; }
     #cardMLP .pred-label-en { color: #2d7d52; }
     #cardCNN .pred-label-en { color: #9a4a1a; }
     .pred-label-zh { font-size: 12px; color: var(--ink2); margin-top: 4px; font-weight: 500; }
@@ -368,6 +369,7 @@
     .proba-bar-wrap { height: 7px; background: var(--bg2); border: 1px solid var(--border-lt); border-radius: 3px; overflow: hidden; }
     .proba-bar-fill { height: 100%; background: var(--border-lt); border-radius: 3px; transition: width 0.6s ease; }
     .proba-bar-fill.top-lr  { background: #4a3a9a; }
+    .proba-bar-fill.top-rf  { background: #1a6b8a; }
     .proba-bar-fill.top-mlp { background: #2d7d52; }
     .proba-bar-fill.top-cnn { background: #9a4a1a; }
     .proba-val { font-family: var(--mono); font-size: 8px; color: var(--ink3); text-align: right; }
@@ -396,6 +398,7 @@
   </div>
   <div class="header-right" id="statusRow">
     <div class="status-pill"><span class="dot" id="dotLR"></span>LR</div>
+    <div class="status-pill"><span class="dot" id="dotRF"></span>RF</div>
     <div class="status-pill"><span class="dot" id="dotMLP"></span>MLP</div>
     <div class="status-pill"><span class="dot" id="dotCNN"></span>CNN</div>
   </div>
@@ -574,10 +577,43 @@
         </div>
       </div>
 
+      <!-- RF -->
+      <div class="model-card" id="cardRF">
+        <div class="model-card-header">
+          <span class="model-num-badge">02</span>
+          <div class="model-name-block">
+            <div class="model-name-en">Random Forest</div>
+            <div class="model-name-zh">隨機森林</div>
+          </div>
+          <span class="model-badge badge-ensemble">Ensemble</span>
+        </div>
+        <div class="model-body">
+          <div class="model-offline" id="offlineRF" style="display:none;">⚠ 模型未載入 — rf_model.pkl not found</div>
+          <p class="model-desc">MFCC mean/std 統計特徵（80-dim），集成多棵決策樹，比 LR 更能捕捉非線性關係。</p>
+          <div class="acc-block">
+            <div class="acc-label-row">
+              <span class="acc-label">Test Accuracy</span>
+              <span class="acc-val" id="accRF">—</span>
+            </div>
+            <div class="acc-bar-wrap">
+              <div class="acc-bar" id="accBarRF" style="background:#1a6b8a;"></div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="pred-result" id="predRF">
+            <div class="pred-waiting">等待音訊輸入…</div>
+          </div>
+          <button class="expand-btn" id="expandRF" onclick="toggleProba('RF')" style="display:none;">
+            完整機率分布 <span class="arrow">▾</span>
+          </button>
+          <div class="proba-bars" id="probaRF"></div>
+        </div>
+      </div>
+
       <!-- MLP -->
       <div class="model-card" id="cardMLP">
         <div class="model-card-header">
-          <span class="model-num-badge">02</span>
+          <span class="model-num-badge">03</span>
           <div class="model-name-block">
             <div class="model-name-en">Keras MLP</div>
             <div class="model-name-zh">多層感知機</div>
@@ -610,7 +646,7 @@
       <!-- CNN -->
       <div class="model-card" id="cardCNN">
         <div class="model-card-header">
-          <span class="model-num-badge">03</span>
+          <span class="model-num-badge">04</span>
           <div class="model-name-block">
             <div class="model-name-en">CNN</div>
             <div class="model-name-zh">卷積神經網路</div>
@@ -654,11 +690,13 @@
     try {
       const res = await fetch('/models_status');
       const d = await res.json();
-      setDot('dotLR', d.lr); setDot('dotMLP', d.mlp); setDot('dotCNN', d.cnn);
-      if (!d.lr)  document.getElementById('offlineLR').style.display  = 'block';
+      setDot('dotLR', d.lr); setDot('dotRF', d.rf); setDot('dotMLP', d.mlp); setDot('dotCNN', d.cnn);
+      if (!d.lr)  document.getElementById('offlineLR').style.display = 'block';
+      if (!d.rf)  document.getElementById('offlineRF').style.display = 'block';
       if (!d.mlp) document.getElementById('offlineMLP').style.display = 'block';
       if (!d.cnn) document.getElementById('offlineCNN').style.display = 'block';
       setAcc('LR',  0.21, d.lr);
+      setAcc('RF',  0.00, d.rf);   // ← 請改成實際準確度
       setAcc('MLP', 0.93, d.mlp);
       setAcc('CNN', 0.72, d.cnn);
     } catch(e) { console.warn('Backend not reachable:', e); }
@@ -719,6 +757,7 @@
       document.getElementById('srVal').textContent  = data.sample_rate.toLocaleString();
 
       renderModel('LR',  data.results.lr,  'lr');
+      renderModel('RF',  data.results.rf,  'rf');
       renderModel('MLP', data.results.mlp, 'mlp');
       renderModel('CNN', data.results.cnn, 'cnn');
 
@@ -769,7 +808,7 @@
   function setLoading(on) {
     document.getElementById('mainSpinner').classList.toggle('active', on);
     document.getElementById('analyzeBtn').disabled = on;
-    ['LR','MLP','CNN'].forEach(k =>
+    ['LR','RF','MLP','CNN'].forEach(k =>
       document.getElementById('card'+k).classList.toggle('loading', on)
     );
   }
