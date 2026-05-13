@@ -106,29 +106,37 @@ def load_audio(file_bytes, sr=22050):
     return y, sr
 
 
+# 在 app.py 中修改
 def extract_lr_features(y, sr):
-    """Handcrafted stats: mean & std of 40 MFCCs → 80-dim vector."""
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
-    feat = np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)])
-    return feat.reshape(1, -1)
+    mfcc_mean = np.mean(mfcc, axis=1)
+    mfcc_std = np.std(mfcc, axis=1)
+    mfcc_max = np.max(mfcc, axis=1) # 加上這個，湊齊 120 維
+    
+    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_max]).reshape(1, -1)
+    return feat
 
+# 在 app.py 中修改
 def extract_rf_features(y, sr):
-    """Same features as LR, but for Random Forest."""
-    return extract_lr_features(y, sr)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
+    mfcc_mean = np.mean(mfcc, axis=1)
+    mfcc_std = np.std(mfcc, axis=1)
+    mfcc_max = np.max(mfcc, axis=1) # 加上這個，湊齊 120 維
+    
+    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_max]).reshape(1, -1)
+    return feat
 
 
 def extract_mlp_features(y, sr):
-    """Full MFCC matrix flattened, then scaled by loaded scaler."""
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
-    # Pad / truncate to fixed length (e.g. 174 frames → common for 4 s @ 22050)
-    target_frames = 174
-    if mfcc.shape[1] < target_frames:
-        mfcc = np.pad(mfcc, ((0, 0), (0, target_frames - mfcc.shape[1])), mode='constant')
-    else:
-        mfcc = mfcc[:, :target_frames]
-    feat = mfcc.flatten().reshape(1, -1)
-    if 'scaler' in MODELS:
-        feat = MODELS['scaler'].transform(feat)
+    # 改為計算 mean, std, max (40*3 = 120維)
+    mfcc_mean = np.mean(mfcc, axis=1)
+    mfcc_std = np.std(mfcc, axis=1)
+    mfcc_max = np.max(mfcc, axis=1)
+    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_max]).reshape(1, -1)
+    
+    if MODELS['scaler']:
+        feat = MODELS['scaler'].transform(feat) # 此時就是 120 對 120 了
     return feat
 
 
