@@ -149,19 +149,64 @@ def extract_features(y, sr):
     return feat
 
 def extract_lr_features(y, sr):
-    return extract_features(y, sr)
-
-def extract_rf_features(y, sr):
-    return extract_common_features(y, sr)
-
-def extract_mlp_features(y, sr):
-    feat = extract_features(y, sr)
-    # MLP 訓練時有經過 normalize，所以這裡必須使用載入的 scaler 轉換
-    if 'scaler' in MODELS:
-        feat = MODELS['scaler'].transform(feat)
-        print("Scaled feature sample:", feat[0][:5])
+    # 提取基礎 MFCC (40維)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
+    
+    # 1. 計算平均值 (Mean) - 40維
+    mfcc_mean = np.mean(mfcc.T, axis=0) 
+    
+    # 2. 計算標準差 (Std) - 40維
+    mfcc_std = np.std(mfcc.T, axis=0)
+    
+    # 3. 計算一階差分 (Delta) 的平均值 - 40維
+    # 這是你訓練模型時真正使用的第三組特徵
+    mfcc_delta = np.mean(librosa.feature.delta(mfcc).T, axis=0) 
+    
+    # 橫向拼接：40 + 40 + 40 = 120 維
+    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_delta]).reshape(1, -1)
     return feat
 
+def extract_rf_features(y, sr):
+    # 提取基礎 MFCC (40維)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
+    
+    # 1. 計算平均值 (Mean) - 40維
+    mfcc_mean = np.mean(mfcc.T, axis=0) 
+    
+    # 2. 計算標準差 (Std) - 40維
+    mfcc_std = np.std(mfcc.T, axis=0)
+    
+    # 3. 計算一階差分 (Delta) 的平均值 - 40維
+    # 這是確保隨機森林 (RF) 能正確分類的關鍵特徵
+    mfcc_delta = np.mean(librosa.feature.delta(mfcc).T, axis=0) 
+    
+    # 橫向拼接：確保輸出的維度是模型預期的 (1, 120)
+    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_delta]).reshape(1, -1)
+    return feat
+
+def extract_mlp_features(y, sr):
+    # 提取基礎 MFCC (40維)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
+    
+    # 1. 計算平均值 (Mean) - 40維
+    mfcc_mean = np.mean(mfcc.T, axis=0) 
+    
+    # 2. 計算標準差 (Std) - 40維
+    mfcc_std = np.std(mfcc.T, axis=0)
+    
+    # 3. 計算一階差分 (Delta) 的平均值 - 40維
+    # 必須將原本錯誤的 mfcc_max 改回訓練時用的 Delta 特徵
+    mfcc_delta = np.mean(librosa.feature.delta(mfcc).T, axis=0) 
+    
+    # 橫向拼接成 120 維向量
+    feat = np.hstack([mfcc_mean, mfcc_std, mfcc_delta]).reshape(1, -1)
+    
+    # 4. 使用訓練時產生的 scaler 進行標準化
+    # 建議加上 'scaler' in MODELS 的判斷，防止 key 不存在時報錯
+    if 'scaler' in MODELS and MODELS['scaler']:
+        feat = MODELS['scaler'].transform(feat) 
+        
+    return feat
 
 
 import cv2
