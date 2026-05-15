@@ -49,7 +49,6 @@ def load_models():
         print(f"[INFO] Created models/ directory. Please place your pkl files there.")
         return
 
-    # Logistic Regression
     lr_path = os.path.join(model_dir, 'lr_model.pkl')
     if os.path.exists(lr_path):
         with open(lr_path, 'rb') as f:
@@ -149,43 +148,26 @@ def extract_features(y, sr):
     return feat
 
 def extract_lr_features(y, sr):
-    # 提取基礎 MFCC (40維)
+
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
-    
-    # 1. 計算平均值 (Mean) - 40維
     mfcc_mean = np.mean(mfcc.T, axis=0) 
-    
-    # 2. 計算標準差 (Std) - 40維
     mfcc_std = np.std(mfcc.T, axis=0)
-    
-    # 3. 計算一階差分 (Delta) 的平均值 - 40維
-    # 這是你訓練模型時真正使用的第三組特徵
     mfcc_delta = np.mean(librosa.feature.delta(mfcc).T, axis=0) 
     
-    # 橫向拼接：40 + 40 + 40 = 120 維
     feat = np.hstack([mfcc_mean, mfcc_std, mfcc_delta]).reshape(1, -1)
     return feat
 
 def extract_rf_features(y, sr):
-    # 提取基礎 MFCC (40維)
+
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
-    
-    # 1. 計算平均值 (Mean) - 40維
     mfcc_mean = np.mean(mfcc.T, axis=0) 
-    
-    # 2. 計算標準差 (Std) - 40維
     mfcc_std = np.std(mfcc.T, axis=0)
-    
-    # 3. 計算一階差分 (Delta) 的平均值 - 40維
-    # 這是確保隨機森林 (RF) 能正確分類的關鍵特徵
     mfcc_delta = np.mean(librosa.feature.delta(mfcc).T, axis=0) 
     
-    # 橫向拼接：確保輸出的維度是模型預期的 (1, 120)
     feat = np.hstack([mfcc_mean, mfcc_std, mfcc_delta]).reshape(1, -1)
     return feat
 
 def extract_mlp_features(y, sr):
-    # 提取基礎 MFCC (40維)
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
     
     # 1. 計算平均值 (Mean) - 40維
@@ -230,38 +212,6 @@ def extract_cnn_features(y, sr):
     # 4. 增加維度以符合 CNN 輸入 (1, 128, 128, 1)
     feat = img_resized.reshape(1, 128, 128, 1)
     return feat
-
-import random
-
-@app.route('/load_test', methods=['GET'])
-def load_test_audio():
-    filename = request.args.get('file')
-    test_dir = 'test_audio'
-    
-    # 建立目錄確保不報錯
-    if not os.path.exists(test_dir):
-        return jsonify({'error': 'test_audio 資料夾不存在'}), 404
-        
-    if not filename:
-        audio_files = [f for f in os.listdir(test_dir) if f.endswith(('.wav', '.mp3'))]
-        if not audio_files: return jsonify({'error': '資料夾內無檔案'}), 404
-        filename = random.choice(audio_files)
-        
-    filepath = os.path.join(test_dir, filename)
-    
-    try:
-        # 核心：直接讀取原始二進位位元組，不經過任何音訊處理
-        with open(filepath, 'rb') as f:
-            audio_data = f.read()
-            encoded_audio = base64.b64encode(audio_data).decode('utf-8')
-            
-        return jsonify({
-            'filename': filename,
-            'audio_base64': encoded_audio,
-            'mime_type': 'audio/wav' if filename.lower().endswith('.wav') else 'audio/mp3'
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 # ── Predict helpers ────────────────────────────────────────────────────────────
 
@@ -365,7 +315,38 @@ def models_status():
         'cnn': 'cnn' in MODELS,
     })
 
+import random
 
+@app.route('/load_test', methods=['GET'])
+def load_test_audio():
+    filename = request.args.get('file')
+    test_dir = 'test_audio'
+    
+    # 建立目錄確保不報錯
+    if not os.path.exists(test_dir):
+        return jsonify({'error': 'test_audio 資料夾不存在'}), 404
+        
+    if not filename:
+        audio_files = [f for f in os.listdir(test_dir) if f.endswith(('.wav', '.mp3'))]
+        if not audio_files: return jsonify({'error': '資料夾內無檔案'}), 404
+        filename = random.choice(audio_files)
+        
+    filepath = os.path.join(test_dir, filename)
+    
+    try:
+        # 核心：直接讀取原始二進位位元組，不經過任何音訊處理
+        with open(filepath, 'rb') as f:
+            audio_data = f.read()
+            encoded_audio = base64.b64encode(audio_data).decode('utf-8')
+            
+        return jsonify({
+            'filename': filename,
+            'audio_base64': encoded_audio,
+            'mime_type': 'audio/wav' if filename.lower().endswith('.wav') else 'audio/mp3'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/predict', methods=['POST'])
 def predict():
     if 'audio' not in request.files:
