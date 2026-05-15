@@ -235,31 +235,22 @@ import random
 
 @app.route('/load_test', methods=['GET'])
 def load_test_audio():
-    filename = request.args.get('file') # 取得網址參數 ?file=xxx
+    filename = request.args.get('file')
     test_dir = 'test_audio'
     
-    if not filename: # 如果沒給參數，就隨機抽一個 (保留原本功能)
-        audio_files = [f for f in os.listdir(test_dir) if f.endswith(tuple(ALLOWED_EXTENSIONS))]
+    # 建立目錄確保不報錯
+    if not os.path.exists(test_dir):
+        return jsonify({'error': 'test_audio 資料夾不存在'}), 404
+        
+    if not filename:
+        audio_files = [f for f in os.listdir(test_dir) if f.endswith(('.wav', '.mp3'))]
+        if not audio_files: return jsonify({'error': '資料夾內無檔案'}), 404
         filename = random.choice(audio_files)
-    
+        
     filepath = os.path.join(test_dir, filename)
     
-    # 檢查資料夾是否存在
-    if not os.path.exists(test_dir):
-        return jsonify({'error': f'資料夾 {test_dir} 不存在'}), 404
-    
-    # 過覽出所有的音檔 (wav, mp3 等)
-    audio_files = [f for f in os.listdir(test_dir) if f.endswith(tuple(ALLOWED_EXTENSIONS))]
-    
-    if not audio_files:
-        return jsonify({'error': 'test_audio 資料夾內沒有音檔'}), 404
-
-    # 檢查檔案是否存在
-    if not os.path.exists(filepath):
-        return jsonify({'error': f'檔案 {filepath} 不存在'}), 404
-
     try:
-        # 讀取音檔並轉成 Base64，讓前端可以直接播放
+        # 核心：直接讀取原始二進位位元組，不經過任何音訊處理
         with open(filepath, 'rb') as f:
             audio_data = f.read()
             encoded_audio = base64.b64encode(audio_data).decode('utf-8')
@@ -267,7 +258,7 @@ def load_test_audio():
         return jsonify({
             'filename': filename,
             'audio_base64': encoded_audio,
-            'mime_type': 'audio/wav' if filename.endswith('wav') else 'audio/mpeg'
+            'mime_type': 'audio/wav' if filename.lower().endswith('.wav') else 'audio/mp3'
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500

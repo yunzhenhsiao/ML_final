@@ -448,11 +448,10 @@
           <div>
             <div class="test-col-title">PRESET TEST AUDIO</div>
             <p class="test-col-sub">
-              預設測試音檔，點擊後需搭配後端 /load_test 路由自動載入。<br/>
-              請將對應 .wav 放入 <code style="background:var(--bg2);padding:1px 5px;border-radius:3px;">test_audio/</code> 資料夾。
+              預設測試音檔
             </p>
             <div class="test-grid">
-              <div class="test-chip" data-file="dog_bark.wav" onclick="loadTestAudio('dog_bark.wav')">
+              <div class="test-chip" data-file="dog_bark.mp3" onclick="loadTestAudio('dog_bark.mp3')">
                 <span class="chip-icon">🐕</span>Dog Bark
               </div>
               <div class="test-chip" data-file="drilling.wav" onclick="loadTestAudio('drilling.wav')">
@@ -464,19 +463,20 @@
               <div class="test-chip" data-file="gun_shot.wav" onclick="loadTestAudio('gun_shot.wav')">
                 <span class="chip-icon">💥</span>Gun Shot
               </div>
-              <div class="test-chip" data-file="car_horn.wav" onclick="loadTestAudio('car_horn.wav')">
-                <span class="chip-icon">🚗</span>Car Horn
+              <div class="test-chip" data-file="siren.mp3" onclick="loadTestAudio('siren.mp3')">
+                <span class="chip-icon">🚗</span>Siren
               </div>
               <div class="test-chip" data-file="air_conditioner.mp3" onclick="loadTestAudio('air_conditioner.mp3')">
                 <span class="chip-icon">❄️</span>air_conditioner
               </div>
             </div>
-            <div class="test-note">
-              ※ 測試音檔功能需後端支援。<br/>
-              將 .wav 放入 test_audio/ 後，在 app.py 新增 /load_test 路由即可啟用。
+            <div class="audio-preview-container" style="margin: 20px 0; text-align: center;">
+                <audio id="mainAudioPlayer" controls preload="auto" style="display: none; width: 100%; max-width: 500px;"></audio>
+                <div id="noAudioMsg" style="color: var(--ink3); font-size: 0.9rem;">尚未選取音檔</div>
             </div>
           </div>
         </div>
+        
 
         <div class="analyze-row">
           <div class="spinner" id="mainSpinner"></div>
@@ -682,6 +682,14 @@
 
 <script>
   let currentFile = null;
+  let toastTimer;
+  function showToast(msg, isErr = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show' + (isErr ? ' error' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = ''; }, 3000);
+  }
 
   async function checkModelStatus() {
     try {
@@ -726,32 +734,54 @@
             return;
         }
 
-        // 1. 將 Base64 轉回 Blob
-        const byteCharacters = atob(data.audio_base64);
-        const byteNumbers = new Array(byteCharacters.length);
+        // 1. 安全解碼 Base64 (移除可能干擾解碼的空白或換行)
+        const b64Data = data.audio_base64.replace(/\s/g, '');
+        const byteCharacters = atob(b64Data);
+        const byteNumbers = new Uint8Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
             byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: data.mime_type });
+        
+        // 2. 建立 Blob 與 File
+        const blob = new Blob([byteNumbers], { type: data.mime_type || 'audio/wav' });
+        const testFile = new File([blob], data.filename, { type: data.mime_type || 'audio/wav' });
 
-        // 2. 建立一個 File 物件 (模擬使用者上傳)
-        const file = new File([blob], data.filename, { type: data.mime_type });
+        currentFile = testFile; 
 
-        // 3. 取得正確的 input 元素 (ID 是 fileInput)
-        const fileInput = document.getElementById('fileInput'); 
-        const dataTransfer = new DataTransfer();
-        dataTransfer.items.add(file); // 這裡使用剛建立的 file
-        fileInput.files = dataTransfer.files;
+        // 同步更新 UI 顯示（讓畫面顯示現在載入的是哪個檔案）
+        handleFile(testFile);
 
-        // 4. 更新全域變數 currentFile 並觸發介面更新
-        handleFile(file);
+        // 3. 更新播放器 (解決 0:00 關鍵)
+        const player = document.getElementById('mainAudioPlayer');
+        const msg = document.getElementById('noAudioMsg');
+        
+        if (player.src) URL.revokeObjectURL(player.src); // 釋放舊記憶體
+        
+        player.src = URL.createObjectURL(blob);
+        player.style.display = 'block';
+        msg.style.display = 'none';
+        player.load(); // 強制瀏覽器重新讀取音檔軌道
 
-        // 5. 自動開始分析
-        analyze(); 
+        // 4. 更新隱藏的檔案輸入框 (供 analyzeBtn.click 使用)
+        const fileInput = document.getElementById('audioFile'); 
+        if (fileInput) {
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(testFile);
+            fileInput.files = dataTransfer.files;
+            
+            // 同步更新 handleFile 的顯示效果 (讓畫面顯示檔名)
+            handleFile(testFile); 
+        }
+
+        showToast(`已載入測試音檔: ${data.filename}`);
+        
+        // 5. 自動觸發分析 (延遲 300ms 確保檔案已就緒)
+        // setTimeout(() => {
+        //     document.getElementById('analyzeBtn').click();
+        // }, 300);
 
     } catch (e) {
-        console.error(e);
+        console.error("載入出錯:", e);
         showToast("無法連接後端載入音檔", true);
     }
 }
@@ -769,13 +799,69 @@
   fi.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
 
   function handleFile(file) {
-    currentFile = file;
+    currentFile = file; // 更新全域變數，確保分析按鈕抓得到檔案
+    
+    // 1. 更新 UI 文字顯示
     document.getElementById('fileNameDisplay').textContent = file.name;
-    document.getElementById('fileMeta').textContent = (file.size/1024).toFixed(1) + ' KB';
+    document.getElementById('fileMeta').textContent = (file.size / 1024).toFixed(1) + ' KB';
     document.getElementById('fileInfoBar').classList.add('visible');
     document.getElementById('analyzeBtn').disabled = false;
+
+    // 2. 更新播放器預覽
+    const player = document.getElementById('mainAudioPlayer');
+    const msg = document.getElementById('noAudioMsg');
+    
+    if (player) {
+        // 釋放舊的 URL 避免記憶體洩漏
+        if (player.src) URL.revokeObjectURL(player.src);
+        
+        // 產生新的預覽網址
+        const url = URL.createObjectURL(file);
+        player.src = url;
+        player.style.display = 'block';
+        if (msg) msg.style.display = 'none';
+        
+        // 強制載入音軌
+        player.load();
+    }
+
     showToast('✓ 已載入：' + file.name);
-  }
+}
+
+  // 監聽手動上傳
+  document.getElementById('audioFile').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+          const player = document.getElementById('mainAudioPlayer');
+          const msg = document.getElementById('noAudioMsg');
+          
+          // 產生一個暫時的 URL 給播放器
+          const url = URL.createObjectURL(file);
+          player.src = url;
+          player.style.display = 'block'; // 顯示播放器
+          msg.style.display = 'none';     // 隱藏提示文字
+          
+          showToast(`已選取檔案: ${file.name}`);
+      }
+  });
+
+  // 將監聽程式碼改成這樣
+  document.addEventListener('DOMContentLoaded', function() {
+      const audioFileInput = document.getElementById('audioFile');
+      if (audioFileInput) {
+          audioFileInput.addEventListener('change', function(e) {
+              const file = e.target.files[0];
+              if (file) {
+                  const player = document.getElementById('mainAudioPlayer');
+                  const msg = document.getElementById('noAudioMsg');
+                  player.src = URL.createObjectURL(file);
+                  player.style.display = 'block';
+                  msg.style.display = 'none';
+                  showToast(`已選取檔案: ${file.name}`);
+              }
+          });
+      }
+  });
 
   async function analyze() {
     if (!currentFile) return;
@@ -852,14 +938,7 @@
     );
   }
 
-  let toastTimer;
-  function showToast(msg, isErr = false) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.className = 'show' + (isErr ? ' error' : '');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { t.className = ''; }, 3000);
-  }
+  
 </script>
 </body>
 </html>
